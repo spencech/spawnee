@@ -58,3 +58,6 @@ export interface CreateAgentRequest {
         secret?: string;
     };
 }
+export interface ModelsListResponse {
+    models: string[];
+}

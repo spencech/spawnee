@@ -78,6 +78,10 @@ export class CursorClient extends EventEmitter {
         const response = await this.client.get('/v0/agents', { params });
         return response.data;
     }
+    async listModels() {
+        const response = await this.client.get('/v0/models');
+        return response.data;
+    }
     async sendFollowUp(agentId, message) {
         await this.client.post(`/v0/agents/${agentId}/followup`, {
             prompt: { text: message }

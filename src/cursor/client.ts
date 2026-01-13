@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { EventEmitter } from 'events';
-import { CursorAgentConfig, CursorAgent, AgentListResponse, CreateAgentRequest } from './types.js';
+import { CursorAgentConfig, CursorAgent, AgentListResponse, CreateAgentRequest, ModelsListResponse } from './types.js';
 import { retry, RetryOptions } from '../utils/retry.js';
 import { Logger } from '../utils/logger.js';
 
@@ -87,8 +87,13 @@ export class CursorClient extends EventEmitter {
     const params: Record<string, string | number> = {};
     if (limit !== undefined) params.limit = limit;
     if (cursor) params.cursor = cursor;
-    
+
     const response = await this.client.get<AgentListResponse>('/v0/agents', { params });
+    return response.data;
+  }
+
+  async listModels(): Promise<ModelsListResponse> {
+    const response = await this.client.get<ModelsListResponse>('/v0/models');
     return response.data;
   }
 

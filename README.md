@@ -110,6 +110,7 @@ spawnee run my-tasks.yaml [options]
 - `--state-file <path>` - State file for persistence
 - `-d, --dry-run` - Preview without spawning agents
 - `--no-persist` - Disable state persistence
+- `--update-source` - Update source YAML with task status for resume capability
 - `-v, --verbose` - Enable verbose output
 
 ### `spawnee validate <template>`
@@ -156,6 +157,18 @@ Show the resolved configuration (useful for debugging).
 ```bash
 spawnee config
 ```
+
+### `spawnee models`
+
+List available models from the Cursor API. Use this to see which model IDs are valid for your templates.
+
+```bash
+spawnee models [options]
+```
+
+**Options:**
+- `-k, --api-key <key>` - Cursor API key
+- `--api-url <url>` - API base URL
 
 ## Task Templates
 
@@ -239,6 +252,10 @@ tasks:
 - `timeout` - Task-specific timeout (ms)
 - `retries` - Max retry attempts
 - `complete` - Mark as already complete (skip)
+- `status` - Task status for resume: `pending`, `started`, `completed`, `failed`
+- `model` - Override default model for this task
+- `repository` - Override plan-level repository: `{ url, branch }`
+- `breakpoint` - Pause for human review when task completes
 - `validation.command` - Command to verify completion
 - `validation.successPattern` - Expected output pattern
 
@@ -250,6 +267,169 @@ tasks:
 - **State Persistence** - Resume interrupted runs from where they left off
 - **Validation** - Optional command validation for task completion
 - **Dry Run** - Preview task graph without spawning agents
+- **Breakpoints** - Pause for human review at critical tasks
+- **Multi-Repository** - Tasks can target different repositories
+- **Task-Level Overrides** - Override model, repository, timeout per task
+
+## Best Practices
+
+### Same-Repository Dependencies
+
+When tasks depend on each other in the **same repository**, include instructions in your prompts for agents to pull dependent branches:
+
+```yaml
+tasks:
+  - id: "base-feature"
+    name: "Base Feature"
+    branch: "feature/base"
+    prompt: |
+      Implement the base authentication system.
+
+  - id: "extended-feature"
+    name: "Extended Feature"
+    dependsOn: ["base-feature"]
+    branch: "feature/extended"
+    prompt: |
+      Extend the authentication with OAuth support.
+
+      **Before starting:** Pull changes from the `feature/base` branch to get the base authentication code.
+```
+
+spawnee automatically adds dependency context to prompts, including branch names and PR links. For same-repo dependencies, it instructs agents to pull dependent branches.
+
+### Cross-Repository Dependencies
+
+Tasks can depend on work in different repositories. spawnee will:
+- Track dependencies correctly
+- Include reference to the other repo's PR in the prompt
+- **Not** prompt agents to pull from other repos (since they're separate repositories)
+
+```yaml
+tasks:
+  - id: "api-update"
+    name: "Update API"
+    repository:
+      url: "https://github.com/org/backend"
+    prompt: "Add new endpoint for user profiles"
+
+  - id: "frontend-integration"
+    name: "Frontend Integration"
+    dependsOn: ["api-update"]
+    repository:
+      url: "https://github.com/org/frontend"
+    prompt: |
+      Integrate with the new user profile API endpoint.
+      Refer to the backend PR for API documentation.
+```
+
+### Bottleneck Tasks Pattern
+
+Use "bottleneck" tasks to integrate parallel work and enable human review:
+
+```yaml
+tasks:
+  # Wave 1: Parallel independent tasks
+  - id: "feature-a"
+    name: "Feature A"
+    prompt: "Implement feature A"
+
+  - id: "feature-b"
+    name: "Feature B"
+    prompt: "Implement feature B"
+
+  - id: "feature-c"
+    name: "Feature C"
+    prompt: "Implement feature C"
+
+  # Bottleneck: Integrates all Wave 1 work
+  - id: "integration"
+    name: "Integration & Review"
+    dependsOn: ["feature-a", "feature-b", "feature-c"]
+    breakpoint: true  # Pause for human review
+    prompt: |
+      Integrate all features from the dependent tasks:
+      1. Pull all feature branches
+      2. Resolve any conflicts
+      3. Ensure all tests pass
+      4. Create unified documentation
+```
+
+When `integration` completes, spawnee will pause and prompt you to review before continuing to any tasks that depend on it.
+
+For multi-repo projects, create separate bottleneck tasks for each repository.
+
+### Parallel Execution Guidelines
+
+Tasks run in parallel when:
+- They have no dependencies on each other
+- Concurrency limit hasn't been reached
+
+Design your task graph for maximum parallelism when tasks don't conflict:
+
+```yaml
+# Good: Independent features run in parallel
+tasks:
+  - id: "docs"
+    prompt: "Write documentation"
+  - id: "tests"
+    prompt: "Add test coverage"
+  - id: "ci"
+    prompt: "Set up CI pipeline"
+```
+
+### Task Granularity
+
+A single agent can perform multiple related tasks. Consider grouping related work:
+
+```yaml
+# Instead of many tiny tasks:
+tasks:
+  - id: "auth-complete"
+    name: "Complete Auth System"
+    prompt: |
+      Implement the complete authentication system:
+      1. User registration with email verification
+      2. Login with JWT tokens
+      3. Password reset flow
+      4. Session management
+```
+
+### Resuming Interrupted Runs
+
+Use `--update-source` to track progress in the YAML file:
+
+```bash
+spawnee run my-tasks.yaml --update-source
+```
+
+This updates the source YAML with `status: started` and `status: completed` fields. If interrupted, re-running the same command will skip completed tasks.
+
+### Task-Level Overrides
+
+Override plan-level defaults at the task level:
+
+```yaml
+defaults:
+  model: "auto"
+  timeout: 3600000
+
+tasks:
+  - id: "simple-task"
+    prompt: "Quick formatting fix"
+    model: "gpt-4o"  # Faster model for simple task
+    timeout: 300000  # 5 min timeout
+
+  - id: "complex-task"
+    prompt: "Architect new microservice"
+    model: "claude-4.5-opus-high-thinking"  # More capable model
+    timeout: 7200000  # 2 hour timeout
+
+  - id: "other-repo-task"
+    prompt: "Update shared library"
+    repository:
+      url: "https://github.com/org/shared-lib"
+      branch: "develop"
+```
 
 ## Limits
 

@@ -6,6 +6,7 @@ import ora from 'ora';
 import { Orchestrator } from './core/orchestrator.js';
 import { parseTemplate, validateTemplateFile } from './parsers/index.js';
 import { FileStateStore } from './storage/file-adapter.js';
+import { YamlPersistence } from './storage/yaml-persistence.js';
 import { loadConfig, generateDefaultConfig, getConfigFilePath } from './utils/config.js';
 import { CursorClient } from './cursor/client.js';
 const program = new Command();
@@ -62,6 +63,7 @@ program
     .option('--state-file <path>', 'State file path for persistence')
     .option('-d, --dry-run', 'Parse template without spawning agents')
     .option('--no-persist', 'Disable state persistence')
+    .option('--update-source', 'Update source YAML file with task status for resume capability')
     .action(async (templatePath, options, cmd) => {
     const globalOpts = cmd.optsWithGlobals();
     if (!existsSync(templatePath)) {
@@ -112,6 +114,10 @@ program
         console.log(chalk.gray(`\n   Config: concurrency=${config.maxConcurrent}, timeout=${config.defaultTimeout}ms, poll=${config.pollInterval}ms`));
     }
     const stateStore = options.persist ? new FileStateStore(config.stateFile) : undefined;
+    const yamlPersistence = options.updateSource ? new YamlPersistence({
+        filePath: templatePath,
+        enabled: true,
+    }) : undefined;
     const orchestrator = new Orchestrator({
         config,
         stateStore,
@@ -119,6 +125,8 @@ program
         baseBranch: template.repository.branch,
         globalContext: template.context.instructions,
         globalFiles: template.context.files,
+        defaultModel: template.defaults.model,
+        yamlPersistence,
     });
     const spinner = ora('Starting orchestration...').start();
     orchestrator.on('started', (status) => {
@@ -138,6 +146,15 @@ program
     });
     orchestrator.on('taskRetry', (task) => {
         console.log(chalk.yellow(`   ↻ Retrying: ${task.id} (attempt ${task.attempts + 1})`));
+    });
+    orchestrator.on('breakpointReached', (task) => {
+        console.log(chalk.yellow(`   ⏸ Breakpoint: ${task.id} - waiting for review...`));
+    });
+    orchestrator.on('breakpointResumed', (task) => {
+        console.log(chalk.green(`   ▶ Resumed: ${task.id}`));
+    });
+    orchestrator.on('breakpointAborted', (task) => {
+        console.log(chalk.red(`   ⏹ Aborted at breakpoint: ${task.id}`));
     });
     orchestrator.on('complete', (results) => {
         console.log(chalk.blue('\n📊 Final Results:'));
@@ -221,6 +238,45 @@ program
             console.log(chalk.yellow('\n💡 Tip: The Cursor Cloud Agents API endpoints may need to be configured.'));
             console.log(chalk.gray('   Check the Cursor documentation or dashboard for the correct API endpoints.'));
             console.log(chalk.gray('   You can override the base URL with: SPAWNEE_API_URL=https://api.cursor.com'));
+        }
+        process.exit(1);
+    }
+});
+program
+    .command('models')
+    .description('List available models from Cursor API')
+    .option('-k, --api-key <key>', 'Cursor API key')
+    .option('--api-url <url>', 'Cursor API base URL')
+    .action(async (options, cmd) => {
+    const globalOpts = cmd.optsWithGlobals();
+    let config;
+    try {
+        config = loadConfig({
+            configFile: globalOpts.config,
+            verbose: globalOpts.verbose,
+            apiKey: options.apiKey,
+            apiBaseUrl: options.apiUrl,
+        });
+    }
+    catch (error) {
+        console.error(chalk.red(`Configuration error: ${error.message}`));
+        process.exit(1);
+    }
+    const client = new CursorClient(config.apiKey, config.apiBaseUrl);
+    try {
+        const response = await client.listModels();
+        console.log(chalk.blue(`\n📋 Available Models: ${response.models.length}\n`));
+        response.models.forEach(model => {
+            console.log(`  ${chalk.cyan(model)}`);
+        });
+        console.log();
+    }
+    catch (error) {
+        const errorMessage = error.message;
+        console.error(chalk.red(`Error: ${errorMessage}`));
+        if (errorMessage.includes('API endpoint not found') || errorMessage.includes('404')) {
+            console.log(chalk.yellow('\n💡 Tip: The /v0/models endpoint may not be available on your API version.'));
+            console.log(chalk.gray('   Check the Cursor documentation for available endpoints.'));
         }
         process.exit(1);
     }

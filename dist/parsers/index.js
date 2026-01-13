@@ -5,6 +5,15 @@ const ValidationSchema = z.object({
     command: z.string(),
     successPattern: z.string(),
 }).optional();
+// Model is now a string - use `spawnee models` to see available models from the API
+const ModelSchema = z.string();
+// Task-level repository override schema
+const TaskRepositorySchema = z.object({
+    url: z.string().url(),
+    branch: z.string().optional(),
+}).optional();
+// Task status for YAML persistence/resume
+const TaskStatusSchema = z.enum(['pending', 'started', 'completed', 'failed']).optional();
 const TaskSchema = z.object({
     id: z.string(),
     name: z.string(),
@@ -17,6 +26,10 @@ const TaskSchema = z.object({
     retries: z.number().optional(),
     validation: ValidationSchema,
     complete: z.boolean().optional(),
+    model: ModelSchema.optional(), // Task-level model override
+    repository: TaskRepositorySchema, // Task-level repository override
+    breakpoint: z.boolean().default(false), // Pause for human review when task completes
+    status: TaskStatusSchema, // For YAML persistence/resume
 });
 const RepositorySchema = z.object({
     url: z.string().url(),
@@ -24,7 +37,7 @@ const RepositorySchema = z.object({
     baseBranch: z.string().optional(),
 });
 const DefaultsSchema = z.object({
-    model: z.enum(['auto', 'claude-4-opus', 'claude-4.5-opus-high-thinking', 'claude-4.5-sonnet-thinking', 'gemini-3-pro', 'gpt-4o', 'gpt-5.1-codex-high', 'gpt-5.1-codex-max-high-fast', 'gpt-5.1-codex-max-high', 'gpt-5.1-codex-max-low-fast', 'gpt-5.1-codex-max-low', 'gpt-5.1-codex-max-medium-fast', 'gpt-5.1-codex-max-xhigh-fast', 'gpt-5.1-codex-max-xhigh', 'gpt-5.1-codex-max', 'gpt-5.1-codex']).default('auto'),
+    model: ModelSchema.default('auto'),
     timeout: z.number().default(3600000),
     retries: z.number().default(2),
     createPR: z.boolean().default(true),
@@ -56,7 +69,10 @@ export function parseTemplate(filePath) {
         timeout: t.timeout ?? validated.defaults.timeout,
         retries: t.retries ?? validated.defaults.retries,
         validation: t.validation,
-        complete: t.complete,
+        complete: t.complete || t.status === 'completed', // Treat status: "completed" same as complete: true
+        model: t.model ?? validated.defaults.model, // Task model, fallback to default
+        repository: t.repository, // Task-level repository override
+        breakpoint: t.breakpoint, // Breakpoint for human review
     }));
     validateDependencies(tasks);
     return {

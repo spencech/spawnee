@@ -12,6 +12,9 @@ export interface Task {
   retries?: number;
   validation?: { command: string; successPattern: string };
   complete?: boolean;
+  model?: string;                                    // Task-level model override
+  repository?: { url: string; branch?: string };     // Task-level repository override
+  breakpoint?: boolean;                              // Pause for human review when task completes
   status: TaskStatus;
   agentId?: string;
   attempts: number;
@@ -19,7 +22,7 @@ export interface Task {
   result?: TaskResult;
 }
 
-export type TaskStatus = 'pending' | 'ready' | 'running' | 'completed' | 'failed';
+export type TaskStatus = 'pending' | 'ready' | 'running' | 'completed' | 'failed' | 'paused_at_breakpoint';
 
 export interface TaskResult {
   branch?: string;
@@ -120,9 +123,33 @@ export class TaskQueue extends EventEmitter {
     this.checkAllComplete();
   }
 
+  markPausedAtBreakpoint(id: string, result?: Partial<TaskResult>): void {
+    const task = this.tasks.get(id);
+    if (!task) return;
+    task.status = 'paused_at_breakpoint';
+    task.result = { ...result, completedAt: new Date().toISOString() };
+    // Note: Do NOT add to completed set yet, do NOT emit taskCompleted yet
+    // This pauses dependent tasks from becoming ready
+    this.emit('taskPausedAtBreakpoint', task);
+  }
+
+  resumeFromBreakpoint(id: string): void {
+    const task = this.tasks.get(id);
+    if (!task || task.status !== 'paused_at_breakpoint') return;
+    task.status = 'completed';
+    this.completed.add(id);
+    this.emit('taskCompleted', task);
+    this.updateReadyTasks();
+    this.checkAllComplete();
+  }
+
   private checkAllComplete(): void {
-    const allDone = Array.from(this.tasks.values()).every(t => t.status === 'completed' || t.status === 'failed');
-    if (allDone) this.emit('allComplete', this.getResults());
+    const allDone = Array.from(this.tasks.values()).every(
+      t => t.status === 'completed' || t.status === 'failed' || t.status === 'paused_at_breakpoint'
+    );
+    // Only emit allComplete if nothing is paused at breakpoint
+    const anyPaused = Array.from(this.tasks.values()).some(t => t.status === 'paused_at_breakpoint');
+    if (allDone && !anyPaused) this.emit('allComplete', this.getResults());
   }
 
   getResults(): { completed: Task[]; failed: Task[] } {
@@ -141,6 +168,7 @@ export class TaskQueue extends EventEmitter {
       running: tasks.filter(t => t.status === 'running').length,
       completed: tasks.filter(t => t.status === 'completed').length,
       failed: tasks.filter(t => t.status === 'failed').length,
+      paused_at_breakpoint: tasks.filter(t => t.status === 'paused_at_breakpoint').length,
       total: tasks.length,
     };
   }

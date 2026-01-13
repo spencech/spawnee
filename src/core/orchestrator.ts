@@ -5,6 +5,8 @@ import { TaskQueue, Task, TaskInput } from './task-queue.js';
 import { StateStore, OrchestratorState, SerializedTask } from '../storage/state-store.js';
 import { Logger } from '../utils/logger.js';
 import { Config } from '../utils/config.js';
+import { YamlPersistence } from '../storage/yaml-persistence.js';
+import { promptBreakpoint } from '../utils/breakpoint-handler.js';
 
 export interface OrchestratorOptions {
   config: Config;
@@ -13,6 +15,8 @@ export interface OrchestratorOptions {
   baseBranch: string;
   globalContext?: string;
   globalFiles?: string[];
+  defaultModel?: string;
+  yamlPersistence?: YamlPersistence;
 }
 
 export class Orchestrator extends EventEmitter {
@@ -39,14 +43,20 @@ export class Orchestrator extends EventEmitter {
   private setupEventHandlers(): void {
     this.queue.on('taskReady', () => this.trySpawnAgents());
 
+    this.queue.on('taskStarted', (task: Task) => {
+      this.options.yamlPersistence?.updateTaskStatus(task.id, 'started');
+    });
+
     this.queue.on('taskCompleted', (task: Task) => {
       this.logger.success(`Task completed: ${task.id}`);
+      this.options.yamlPersistence?.updateTaskStatus(task.id, 'completed');
       this.emit('taskCompleted', task);
       this.saveState();
     });
 
     this.queue.on('taskFailed', (task: Task) => {
       this.logger.error(`Task failed: ${task.id} - ${task.error}`);
+      this.options.yamlPersistence?.updateTaskStatus(task.id, 'failed');
       this.emit('taskFailed', task);
       this.saveState();
     });
@@ -54,6 +64,11 @@ export class Orchestrator extends EventEmitter {
     this.queue.on('taskRetry', (task: Task) => {
       this.logger.warn(`Retrying task: ${task.id} (attempt ${task.attempts + 1})`);
       this.emit('taskRetry', task);
+    });
+
+    this.queue.on('taskPausedAtBreakpoint', (task: Task) => {
+      this.logger.info(`Task paused at breakpoint: ${task.id}`);
+      this.emit('breakpointReached', task);
     });
 
     this.queue.on('allComplete', (results) => {
@@ -122,12 +137,18 @@ export class Orchestrator extends EventEmitter {
     const prompt = this.buildPrompt(task);
     this.logger.info(`Spawning agent for task: ${task.id}`);
 
+    // Determine repository: task-level overrides plan-level
+    const repository = task.repository?.url || this.options.repository;
+    const baseBranch = task.repository?.branch || this.options.baseBranch;
+    const model = task.model || this.options.defaultModel;
+
     const agent = await this.client.createAgent({
       prompt,
-      repository: this.options.repository,
+      repository,
       branchName: task.branch || `task/${task.id}`,
-      ref: this.options.baseBranch,
+      ref: baseBranch,
       autoCreatePr: true,
+      model,
     });
 
     this.activeAgents.set(agent.id, task.id);
@@ -158,21 +179,51 @@ export class Orchestrator extends EventEmitter {
       parts.push(`## Reference Files\n${this.options.globalFiles.map(f => `- ${f}`).join('\n')}`);
     }
 
-    // Add dependency context - reference previous agents' work
+    // Add dependency context with cross-repo awareness
     if (task.dependsOn.length > 0) {
-      const dependencyInfo: string[] = [];
+      const taskRepo = task.repository?.url || this.options.repository;
+      const sameRepoDeps: string[] = [];
+      const crossRepoDeps: string[] = [];
+
       for (const depId of task.dependsOn) {
         const depTask = this.queue.getTask(depId);
-        if (depTask?.result) {
+        if (!depTask) continue;
+
+        const depRepo = depTask.repository?.url || this.options.repository;
+        const isSameRepo = taskRepo === depRepo;
+
+        if (depTask.result) {
           const branchInfo = depTask.result.branch ? ` (branch: ${depTask.result.branch})` : '';
           const prInfo = depTask.result.pullRequestUrl ? `\n   PR: ${depTask.result.pullRequestUrl}` : '';
-          dependencyInfo.push(`- **${depTask.name}**${branchInfo}${prInfo}`);
+
+          if (isSameRepo) {
+            sameRepoDeps.push(`- **${depTask.name}**${branchInfo}${prInfo}`);
+          } else {
+            crossRepoDeps.push(`- **${depTask.name}** [${depRepo}]${branchInfo}${prInfo}`);
+          }
         } else if (depTask) {
-          dependencyInfo.push(`- **${depTask.name}** (in progress)`);
+          if (isSameRepo) {
+            sameRepoDeps.push(`- **${depTask.name}** (in progress)`);
+          } else {
+            crossRepoDeps.push(`- **${depTask.name}** [${depRepo}] (in progress)`);
+          }
         }
       }
-      if (dependencyInfo.length > 0) {
-        parts.push(`## Dependencies\nThis task depends on the following completed tasks:\n${dependencyInfo.join('\n')}\n\nPlease review the work from these dependencies before proceeding. If they created documentation or files, reference those in your work.`);
+
+      if (sameRepoDeps.length > 0) {
+        parts.push(
+          `## Dependencies (Same Repository)\n` +
+          `The following tasks have completed in this repository:\n${sameRepoDeps.join('\n')}\n\n` +
+          `**Important**: Before starting, pull the latest changes from the dependent branches to incorporate their work.`
+        );
+      }
+
+      if (crossRepoDeps.length > 0) {
+        parts.push(
+          `## Dependencies (Other Repositories)\n` +
+          `The following tasks have completed in other repositories:\n${crossRepoDeps.join('\n')}\n\n` +
+          `Note: These are in different repositories. Reference their PRs if you need to understand their changes.`
+        );
       }
     }
 
@@ -195,13 +246,45 @@ export class Orchestrator extends EventEmitter {
     const taskId = this.activeAgents.get(agentId);
     if (!taskId) return;
 
+    const task = this.queue.getTask(taskId);
+    if (!task) return;
+
     this.activeAgents.delete(agentId);
     this.clearTimeout(agentId);
-    this.queue.markCompleted(taskId, { 
-      branch: agent.target?.branchName, 
-      pullRequestUrl: agent.target?.prUrl 
-    });
+
+    const result = {
+      branch: agent.target?.branchName,
+      pullRequestUrl: agent.target?.prUrl,
+    };
+
+    // Check for breakpoint
+    if (task.breakpoint) {
+      // Pause at breakpoint - don't unlock dependents yet
+      this.queue.markPausedAtBreakpoint(taskId, result);
+      // Interactive prompt (runs async, doesn't block other tasks)
+      this.handleBreakpoint(task);
+    } else {
+      // Normal completion
+      this.queue.markCompleted(taskId, result);
+    }
+
+    // Continue spawning other ready tasks (independent of breakpoint handling)
     this.trySpawnAgents();
+  }
+
+  private async handleBreakpoint(task: Task): Promise<void> {
+    const { action } = await promptBreakpoint(task);
+
+    if (action === 'continue') {
+      this.logger.info(`Resuming from breakpoint: ${task.id}`);
+      this.queue.resumeFromBreakpoint(task.id);
+      this.emit('breakpointResumed', task);
+      this.trySpawnAgents();
+    } else {
+      this.logger.warn(`Aborting at breakpoint: ${task.id}`);
+      this.emit('breakpointAborted', task);
+      await this.stop();
+    }
   }
 
   private handleAgentFailed(agentId: string, error: string): void {
