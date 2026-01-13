@@ -1,6 +1,6 @@
 {
   "name": "spawnee",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Spawn and orchestrate Cursor Cloud Agents from task templates",
   "type": "module",
   "main": "dist/index.js",
