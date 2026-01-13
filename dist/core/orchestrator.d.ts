@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { TaskInput } from './task-queue.js';
 import { StateStore } from '../storage/state-store.js';
 import { Config } from '../utils/config.js';
+import { YamlPersistence } from '../storage/yaml-persistence.js';
 export interface OrchestratorOptions {
     config: Config;
     stateStore?: StateStore;
@@ -9,6 +10,8 @@ export interface OrchestratorOptions {
     baseBranch: string;
     globalContext?: string;
     globalFiles?: string[];
+    defaultModel?: string;
+    yamlPersistence?: YamlPersistence;
 }
 export declare class Orchestrator extends EventEmitter {
     private client;
@@ -28,6 +31,7 @@ export declare class Orchestrator extends EventEmitter {
     private spawnAgent;
     private buildPrompt;
     private handleAgentComplete;
+    private handleBreakpoint;
     private handleAgentFailed;
     private clearTimeout;
     private clearAllTimeouts;

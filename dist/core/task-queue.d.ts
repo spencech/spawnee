@@ -14,13 +14,19 @@ export interface Task {
         successPattern: string;
     };
     complete?: boolean;
+    model?: string;
+    repository?: {
+        url: string;
+        branch?: string;
+    };
+    breakpoint?: boolean;
     status: TaskStatus;
     agentId?: string;
     attempts: number;
     error?: string;
     result?: TaskResult;
 }
-export type TaskStatus = 'pending' | 'ready' | 'running' | 'completed' | 'failed';
+export type TaskStatus = 'pending' | 'ready' | 'running' | 'completed' | 'failed' | 'paused_at_breakpoint';
 export interface TaskResult {
     branch?: string;
     pullRequestUrl?: string;
@@ -39,6 +45,8 @@ export declare class TaskQueue extends EventEmitter {
     markRunning(id: string, agentId: string): void;
     markCompleted(id: string, result?: Partial<TaskResult>, checkComplete?: boolean): void;
     markFailed(id: string, error: string, maxRetries?: number): void;
+    markPausedAtBreakpoint(id: string, result?: Partial<TaskResult>): void;
+    resumeFromBreakpoint(id: string): void;
     private checkAllComplete;
     getResults(): {
         completed: Task[];

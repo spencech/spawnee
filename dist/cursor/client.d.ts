@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { CursorAgentConfig, CursorAgent, AgentListResponse } from './types.js';
+import { CursorAgentConfig, CursorAgent, AgentListResponse, ModelsListResponse } from './types.js';
 import { RetryOptions } from '../utils/retry.js';
 export declare class CursorClient extends EventEmitter {
     private client;
@@ -10,6 +10,7 @@ export declare class CursorClient extends EventEmitter {
     createAgent(config: CursorAgentConfig, retryOpts?: RetryOptions): Promise<CursorAgent>;
     getAgent(agentId: string): Promise<CursorAgent>;
     listAgents(limit?: number, cursor?: string): Promise<AgentListResponse>;
+    listModels(): Promise<ModelsListResponse>;
     sendFollowUp(agentId: string, message: string): Promise<void>;
     stopAgent(agentId: string): Promise<void>;
     cancelAgent(agentId: string): Promise<void>;

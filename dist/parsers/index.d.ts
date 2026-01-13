@@ -21,13 +21,28 @@ declare const TaskSchema: z.ZodObject<{
         successPattern: string;
     }>>;
     complete: z.ZodOptional<z.ZodBoolean>;
+    model: z.ZodOptional<z.ZodString>;
+    repository: z.ZodOptional<z.ZodObject<{
+        url: z.ZodString;
+        branch: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        url: string;
+        branch?: string | undefined;
+    }, {
+        url: string;
+        branch?: string | undefined;
+    }>>;
+    breakpoint: z.ZodDefault<z.ZodBoolean>;
+    status: z.ZodOptional<z.ZodEnum<["pending", "started", "completed", "failed"]>>;
 }, "strip", z.ZodTypeAny, {
     id: string;
     name: string;
     prompt: string;
     dependsOn: string[];
     priority: number;
+    breakpoint: boolean;
     timeout?: number | undefined;
+    status?: "completed" | "failed" | "pending" | "started" | undefined;
     branch?: string | undefined;
     files?: string[] | undefined;
     retries?: number | undefined;
@@ -36,11 +51,17 @@ declare const TaskSchema: z.ZodObject<{
         successPattern: string;
     } | undefined;
     complete?: boolean | undefined;
+    model?: string | undefined;
+    repository?: {
+        url: string;
+        branch?: string | undefined;
+    } | undefined;
 }, {
     id: string;
     name: string;
     prompt: string;
     timeout?: number | undefined;
+    status?: "completed" | "failed" | "pending" | "started" | undefined;
     dependsOn?: string[] | undefined;
     priority?: number | undefined;
     branch?: string | undefined;
@@ -51,6 +72,12 @@ declare const TaskSchema: z.ZodObject<{
         successPattern: string;
     } | undefined;
     complete?: boolean | undefined;
+    model?: string | undefined;
+    repository?: {
+        url: string;
+        branch?: string | undefined;
+    } | undefined;
+    breakpoint?: boolean | undefined;
 }>;
 declare const TemplateSchema: z.ZodObject<{
     name: z.ZodString;
@@ -68,19 +95,19 @@ declare const TemplateSchema: z.ZodObject<{
         baseBranch?: string | undefined;
     }>;
     defaults: z.ZodDefault<z.ZodObject<{
-        model: z.ZodDefault<z.ZodEnum<["auto", "claude-4-opus", "claude-4.5-opus-high-thinking", "claude-4.5-sonnet-thinking", "gemini-3-pro", "gpt-4o", "gpt-5.1-codex-high", "gpt-5.1-codex-max-high-fast", "gpt-5.1-codex-max-high", "gpt-5.1-codex-max-low-fast", "gpt-5.1-codex-max-low", "gpt-5.1-codex-max-medium-fast", "gpt-5.1-codex-max-xhigh-fast", "gpt-5.1-codex-max-xhigh", "gpt-5.1-codex-max", "gpt-5.1-codex"]>>;
+        model: z.ZodDefault<z.ZodString>;
         timeout: z.ZodDefault<z.ZodNumber>;
         retries: z.ZodDefault<z.ZodNumber>;
         createPR: z.ZodDefault<z.ZodBoolean>;
     }, "strip", z.ZodTypeAny, {
         timeout: number;
         retries: number;
-        model: "auto" | "claude-4-opus" | "claude-4.5-opus-high-thinking" | "claude-4.5-sonnet-thinking" | "gemini-3-pro" | "gpt-4o" | "gpt-5.1-codex-high" | "gpt-5.1-codex-max-high-fast" | "gpt-5.1-codex-max-high" | "gpt-5.1-codex-max-low-fast" | "gpt-5.1-codex-max-low" | "gpt-5.1-codex-max-medium-fast" | "gpt-5.1-codex-max-xhigh-fast" | "gpt-5.1-codex-max-xhigh" | "gpt-5.1-codex-max" | "gpt-5.1-codex";
+        model: string;
         createPR: boolean;
     }, {
         timeout?: number | undefined;
         retries?: number | undefined;
-        model?: "auto" | "claude-4-opus" | "claude-4.5-opus-high-thinking" | "claude-4.5-sonnet-thinking" | "gemini-3-pro" | "gpt-4o" | "gpt-5.1-codex-high" | "gpt-5.1-codex-max-high-fast" | "gpt-5.1-codex-max-high" | "gpt-5.1-codex-max-low-fast" | "gpt-5.1-codex-max-low" | "gpt-5.1-codex-max-medium-fast" | "gpt-5.1-codex-max-xhigh-fast" | "gpt-5.1-codex-max-xhigh" | "gpt-5.1-codex-max" | "gpt-5.1-codex" | undefined;
+        model?: string | undefined;
         createPR?: boolean | undefined;
     }>>;
     context: z.ZodDefault<z.ZodObject<{
@@ -114,13 +141,28 @@ declare const TemplateSchema: z.ZodObject<{
             successPattern: string;
         }>>;
         complete: z.ZodOptional<z.ZodBoolean>;
+        model: z.ZodOptional<z.ZodString>;
+        repository: z.ZodOptional<z.ZodObject<{
+            url: z.ZodString;
+            branch: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            url: string;
+            branch?: string | undefined;
+        }, {
+            url: string;
+            branch?: string | undefined;
+        }>>;
+        breakpoint: z.ZodDefault<z.ZodBoolean>;
+        status: z.ZodOptional<z.ZodEnum<["pending", "started", "completed", "failed"]>>;
     }, "strip", z.ZodTypeAny, {
         id: string;
         name: string;
         prompt: string;
         dependsOn: string[];
         priority: number;
+        breakpoint: boolean;
         timeout?: number | undefined;
+        status?: "completed" | "failed" | "pending" | "started" | undefined;
         branch?: string | undefined;
         files?: string[] | undefined;
         retries?: number | undefined;
@@ -129,11 +171,17 @@ declare const TemplateSchema: z.ZodObject<{
             successPattern: string;
         } | undefined;
         complete?: boolean | undefined;
+        model?: string | undefined;
+        repository?: {
+            url: string;
+            branch?: string | undefined;
+        } | undefined;
     }, {
         id: string;
         name: string;
         prompt: string;
         timeout?: number | undefined;
+        status?: "completed" | "failed" | "pending" | "started" | undefined;
         dependsOn?: string[] | undefined;
         priority?: number | undefined;
         branch?: string | undefined;
@@ -144,6 +192,12 @@ declare const TemplateSchema: z.ZodObject<{
             successPattern: string;
         } | undefined;
         complete?: boolean | undefined;
+        model?: string | undefined;
+        repository?: {
+            url: string;
+            branch?: string | undefined;
+        } | undefined;
+        breakpoint?: boolean | undefined;
     }>, "many">;
 }, "strip", z.ZodTypeAny, {
     name: string;
@@ -152,23 +206,15 @@ declare const TemplateSchema: z.ZodObject<{
         branch: string;
         baseBranch?: string | undefined;
     };
-    defaults: {
-        timeout: number;
-        retries: number;
-        model: "auto" | "claude-4-opus" | "claude-4.5-opus-high-thinking" | "claude-4.5-sonnet-thinking" | "gemini-3-pro" | "gpt-4o" | "gpt-5.1-codex-high" | "gpt-5.1-codex-max-high-fast" | "gpt-5.1-codex-max-high" | "gpt-5.1-codex-max-low-fast" | "gpt-5.1-codex-max-low" | "gpt-5.1-codex-max-medium-fast" | "gpt-5.1-codex-max-xhigh-fast" | "gpt-5.1-codex-max-xhigh" | "gpt-5.1-codex-max" | "gpt-5.1-codex";
-        createPR: boolean;
-    };
-    context: {
-        files: string[];
-        instructions?: string | undefined;
-    };
     tasks: {
         id: string;
         name: string;
         prompt: string;
         dependsOn: string[];
         priority: number;
+        breakpoint: boolean;
         timeout?: number | undefined;
+        status?: "completed" | "failed" | "pending" | "started" | undefined;
         branch?: string | undefined;
         files?: string[] | undefined;
         retries?: number | undefined;
@@ -177,7 +223,22 @@ declare const TemplateSchema: z.ZodObject<{
             successPattern: string;
         } | undefined;
         complete?: boolean | undefined;
+        model?: string | undefined;
+        repository?: {
+            url: string;
+            branch?: string | undefined;
+        } | undefined;
     }[];
+    defaults: {
+        timeout: number;
+        retries: number;
+        model: string;
+        createPR: boolean;
+    };
+    context: {
+        files: string[];
+        instructions?: string | undefined;
+    };
 }, {
     name: string;
     repository: {
@@ -190,6 +251,7 @@ declare const TemplateSchema: z.ZodObject<{
         name: string;
         prompt: string;
         timeout?: number | undefined;
+        status?: "completed" | "failed" | "pending" | "started" | undefined;
         dependsOn?: string[] | undefined;
         priority?: number | undefined;
         branch?: string | undefined;
@@ -200,11 +262,17 @@ declare const TemplateSchema: z.ZodObject<{
             successPattern: string;
         } | undefined;
         complete?: boolean | undefined;
+        model?: string | undefined;
+        repository?: {
+            url: string;
+            branch?: string | undefined;
+        } | undefined;
+        breakpoint?: boolean | undefined;
     }[];
     defaults?: {
         timeout?: number | undefined;
         retries?: number | undefined;
-        model?: "auto" | "claude-4-opus" | "claude-4.5-opus-high-thinking" | "claude-4.5-sonnet-thinking" | "gemini-3-pro" | "gpt-4o" | "gpt-5.1-codex-high" | "gpt-5.1-codex-max-high-fast" | "gpt-5.1-codex-max-high" | "gpt-5.1-codex-max-low-fast" | "gpt-5.1-codex-max-low" | "gpt-5.1-codex-max-medium-fast" | "gpt-5.1-codex-max-xhigh-fast" | "gpt-5.1-codex-max-xhigh" | "gpt-5.1-codex-max" | "gpt-5.1-codex" | undefined;
+        model?: string | undefined;
         createPR?: boolean | undefined;
     } | undefined;
     context?: {
