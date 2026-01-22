@@ -22,7 +22,8 @@
     "clean": "rm -rf dist",
     "release:patch": "npm version patch && npm publish && git push && git push --tags",
     "release:minor": "npm version minor && npm publish && git push && git push --tags",
-    "release:major": "npm version major && npm publish && git push && git push --tags"
+    "release:major": "npm version major && npm publish && git push && git push --tags",
+    "npm:key": "npm config set //registry.npmjs.org/:_authToken="
   },
   "dependencies": {
     "@types/inquirer": "^9.0.9",
